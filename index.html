@@ -1,0 +1,659 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Lebensbuch Rekorder</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Rekorder">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#F2F3EF" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#12151C" media="(prefers-color-scheme: dark)">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Alegreya:ital,wght@0,500;0,700;1,500&family=Alegreya+Sans:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+/* Layout: same birch-paper world as the Lebensbuch; one stage with a magnetic record button inside a living blob and a radial spectrum. */
+:root{
+  --paper:#F2F3EF; --sheet:#FBFBF8; --ink:#1E2433; --muted:#5C6375; --line:#D6D9D1;
+  --thread:#9B2C3A; --thread-soft:#F1E1E1; --blue:#34507A; --blue-soft:#E3E9F2; --ok:#2F6B4A; --ok-soft:#E1EEE5;
+  --f-display:"Alegreya", Georgia, serif; --f-body:"Alegreya Sans", "Segoe UI", system-ui, sans-serif; --f-mono:"IBM Plex Mono", ui-monospace, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark){:root{
+  --paper:#12151C; --sheet:#1A1E28; --ink:#E8E7E1; --muted:#9BA1AF; --line:#2C3140;
+  --thread:#D9707F; --thread-soft:#3A2228; --blue:#93B1DA; --blue-soft:#1F2A3B; --ok:#7CC39B; --ok-soft:#1C3026; color-scheme:dark}}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--paper);color:var(--ink);font-family:var(--f-body);font-size:17px;line-height:1.5;
+  padding:env(safe-area-inset-top,0) max(16px,env(safe-area-inset-right,0px)) 48px max(16px,env(safe-area-inset-left,0px))}
+.wrap{max-width:900px;margin:0 auto}
+h1,h2,h3{font-family:var(--f-display);margin:0;line-height:1.15;text-wrap:balance}
+button,input,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+
+header{padding-block:32px 8px}
+.eyebrow{font-family:var(--f-mono);font-size:12.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--thread)}
+h1{font-size:clamp(36px,6.5vw,58px);margin-top:6px;font-weight:700}
+h1 .sc{display:inline-block;min-width:.3em}
+.stitch{height:12px;margin-top:18px;background:linear-gradient(45deg,transparent 42%,var(--thread) 42% 58%,transparent 58%),linear-gradient(-45deg,transparent 42%,var(--thread) 42% 58%,transparent 58%);background-size:12px 12px;animation:sew 1.6s steps(44) both}
+@keyframes sew{from{clip-path:inset(0 100% 0 0)}to{clip-path:inset(0 0 0 0)}}
+
+/* Gooey tab bar */
+.goo-nav{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--paper);padding-block:14px;margin-bottom:12px}
+.goo{position:relative;display:inline-flex;background:var(--sheet);border:1px solid var(--line);border-radius:999px;padding:4px;max-width:100%;overflow-x:auto;scrollbar-width:none}
+.goo-layer{position:absolute;inset:4px;filter:url(#goo);pointer-events:none}
+.goo-layer i{position:absolute;top:0;height:100%;border-radius:999px;background:var(--ink);transition:left .45s cubic-bezier(.6,.05,.3,1),width .45s cubic-bezier(.6,.05,.3,1)}
+.goo-layer i.trail{transition-duration:.7s;transform:scale(.82)}
+.goo button{position:relative;z-index:1;border:0;background:none;padding:9px 18px;border-radius:999px;cursor:pointer;font-weight:500;color:var(--muted);white-space:nowrap;transition:color .3s}
+.goo button[aria-selected="true"]{color:var(--paper)}
+.badge{font-family:var(--f-mono);font-size:11px;margin-left:6px;padding:1px 6px;border-radius:999px;background:var(--thread);color:#fff}
+
+/* Segmented stepper */
+.stepper{display:grid;grid-template-columns:repeat(8,1fr);gap:4px;margin-top:6px}
+.seg{height:30px;border:0;border-radius:6px;background:var(--line);cursor:pointer;position:relative;overflow:hidden;padding:0}
+.seg i{position:absolute;inset:0 auto 0 0;background:var(--blue);opacity:.35;transition:width .5s}
+.seg[aria-current="true"]{outline:2px solid var(--thread);outline-offset:1px}
+.seg span{position:relative;font-family:var(--f-mono);font-size:12px;color:var(--ink)}
+.chap-title{display:flex;justify-content:space-between;gap:12px;align-items:baseline;flex-wrap:wrap;margin-top:12px}
+.chap-title h2{font-size:clamp(24px,3.6vw,32px)}
+.chap-title span{font-family:var(--f-mono);font-size:12.5px;color:var(--muted)}
+
+.qpick{display:flex;flex-direction:column;gap:6px;margin-top:12px;max-height:250px;overflow:auto;padding-right:4px}
+.qpick label{display:flex;gap:10px;align-items:flex-start;padding:8px 12px;border-radius:8px;border:1px solid transparent;cursor:pointer}
+.qpick label:hover{background:var(--sheet)}
+.qpick input{margin-top:6px;accent-color:var(--thread)}
+.qpick label.sel{background:var(--sheet);border-color:var(--line)}
+.qpick .rec{font-family:var(--f-mono);font-size:11.5px;color:var(--ok);margin-left:auto;white-space:nowrap;padding-top:3px}
+
+/* Stage */
+.stage{margin-top:22px;background:var(--sheet);border:1px solid var(--line);border-radius:16px;padding:22px 16px;display:flex;flex-direction:column;align-items:center;gap:14px}
+.prompt{max-width:56ch;text-align:center}
+.prompt small{font-family:var(--f-mono);font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+.prompt p{font-family:var(--f-display);font-size:clamp(20px,3vw,26px);margin:4px 0 0;text-wrap:balance}
+.orb{position:relative;width:min(320px,80vw);aspect-ratio:1;max-width:100%;display:grid;place-items:center}
+.orb canvas{position:absolute;inset:0;width:100%;height:100%}
+.blob{position:absolute;width:52%;height:52%;background:var(--thread-soft);border-radius:42% 58% 63% 37% / 41% 44% 56% 59%;animation:morph 8s ease-in-out infinite;transition:transform .12s linear}
+.recording .blob{background:var(--thread);opacity:.22}
+@keyframes morph{0%,100%{border-radius:42% 58% 63% 37% / 41% 44% 56% 59%}33%{border-radius:63% 37% 45% 55% / 55% 61% 39% 45%}66%{border-radius:38% 62% 36% 64% / 63% 35% 65% 37%}}
+.recbtn{position:relative;width:96px;height:96px;border-radius:50%;border:0;background:var(--thread);color:#fff;cursor:pointer;display:grid;place-items:center;box-shadow:0 10px 30px -10px var(--thread);transition:transform .2s ease-out}
+.recbtn .ic{width:30px;height:30px;border-radius:50%;background:#fff;transition:all .3s}
+.recording .recbtn .ic{border-radius:6px;width:28px;height:28px}
+.timer{font-family:var(--f-mono);font-size:28px;font-variant-numeric:tabular-nums;letter-spacing:.04em}
+.status{font-size:15px;color:var(--muted);min-height:1.5em;text-align:center}
+.controls{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+.btn{border:1px solid var(--line);background:var(--sheet);border-radius:999px;padding:8px 16px;cursor:pointer;font-weight:500;font-size:15px}
+.btn:hover{border-color:var(--muted)}
+.btn.primary{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+.btn.thread{background:var(--thread);color:#fff;border-color:var(--thread)}
+.btn.small{padding:4px 11px;font-size:13.5px}
+.btn[disabled]{opacity:.45;cursor:default}
+
+.lang{display:flex;gap:10px;align-items:center;flex-wrap:wrap;justify-content:center;font-size:15px}
+.seg-lang{display:inline-flex;border:1px solid var(--line);border-radius:999px;overflow:hidden}
+.seg-lang button{border:0;background:none;padding:6px 14px;cursor:pointer;font-family:var(--f-mono);font-size:13px}
+.seg-lang button[aria-pressed="true"]{background:var(--blue);color:var(--paper)}
+.switch{display:inline-flex;align-items:center;gap:8px;cursor:pointer}
+.switch input{appearance:none;width:42px;height:24px;border-radius:999px;background:var(--line);position:relative;cursor:pointer;transition:background .3s;margin:0}
+.switch input::after{content:"";position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:var(--sheet);transition:left .35s cubic-bezier(.5,1.6,.5,1)}
+.switch input:checked{background:var(--ok)}
+.switch input:checked::after{left:21px}
+.live{width:100%;max-width:640px;max-height:220px;overflow:auto;background:var(--paper);border:1px solid var(--line);border-radius:10px;padding:10px 14px;font-size:16px}
+.live .ts{font-family:var(--f-mono);font-size:11.5px;color:var(--muted);margin-right:6px}
+.live .lg{font-family:var(--f-mono);font-size:10.5px;color:var(--blue);margin-right:6px}
+.live .interim{color:var(--muted);font-style:italic}
+
+.who{display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:center}
+.who .hint{font-size:14px;color:var(--muted)}
+.who button{border:2px solid var(--line);background:var(--paper);border-radius:999px;padding:10px 22px;font-weight:700;font-size:16px;cursor:pointer;min-width:96px;transition:all .25s}
+.who button[aria-pressed="true"]{border-color:var(--thread);background:var(--thread);color:#fff;transform:scale(1.04)}
+.who button[data-who="ich"][aria-pressed="true"]{border-color:var(--blue);background:var(--blue);color:var(--paper)}
+.live .sp{font-weight:700;margin-right:6px}
+.live .sp.mama{color:var(--thread)} .live .sp.ich{color:var(--blue)}
+.srnote{max-width:640px;background:var(--blue-soft);border-radius:10px;padding:10px 14px;font-size:15px}
+.hint{color:var(--muted)}
+/* Skeleton shimmer */
+.sk{height:70px;border-radius:10px;background:linear-gradient(100deg,var(--line) 30%,var(--sheet) 50%,var(--line) 70%);background-size:300% 100%;animation:shimmer 1.4s linear infinite}
+@keyframes shimmer{from{background-position:100% 0}to{background-position:0 0}}
+
+/* Recordings */
+.list{display:flex;flex-direction:column;gap:10px}
+.card{background:var(--sheet);border:1px solid var(--line);border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;gap:8px}
+.card h3{font-size:19px;font-weight:500}
+.meta{font-family:var(--f-mono);font-size:12px;color:var(--muted);display:flex;gap:12px;flex-wrap:wrap}
+.meta .exp{color:var(--ok)}
+.card audio{width:100%;max-width:420px;height:36px}
+.card textarea{width:100%;min-height:110px;background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:10px;resize:vertical}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.empty{border:1px dashed var(--line);border-radius:12px;padding:22px;color:var(--muted)}
+.export{display:flex;flex-direction:column;gap:10px;margin-bottom:18px}
+.up{height:8px;border-radius:4px;background:var(--line);overflow:hidden}
+.up i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--blue),var(--thread));transition:width .2s}
+.help ol{padding-left:22px;display:flex;flex-direction:column;gap:10px;max-width:64ch}
+.help p{max-width:64ch}
+.note{background:var(--blue-soft);border-radius:10px;padding:12px 16px;font-size:15.5px;max-width:64ch}
+.toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translate(-50%,20px);opacity:0;background:var(--ink);color:var(--paper);padding:10px 18px;border-radius:999px;transition:all .35s;pointer-events:none;z-index:20;max-width:calc(100% - 32px)}
+.toast.on{opacity:1;transform:translate(-50%,0)}
+@media (max-width:560px){.stepper span{font-size:10px}.goo button{padding:8px 13px}.qpick{max-height:190px}.stage{padding:18px 12px}header{padding-block:20px 4px}}
+@media (prefers-reduced-motion: reduce){*{animation:none!important;transition:none!important}}
+.top{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.ui-lang{display:inline-flex;border:1px solid var(--line);border-radius:999px;overflow:hidden;background:var(--sheet)}
+.ui-lang button{border:0;background:none;padding:6px 12px;cursor:pointer;font-size:14px;font-weight:500;color:var(--muted)}
+.ui-lang button[aria-pressed="true"]{background:var(--ink);color:var(--paper)}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><filter id="goo"><feGaussianBlur in="SourceGraphic" stdDeviation="6" result="b"/><feColorMatrix in="b" mode="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 20 -9" result="g"/><feComposite in="SourceGraphic" in2="g" operator="atop"/></filter></svg>
+<div class="wrap">
+<header>
+  <div class="top">
+    <div class="eyebrow" data-i18n="eyebrow"></div>
+    <div class="ui-lang" role="group" data-i18n-aria="appLang">
+      <button data-ui="de" aria-pressed="true">Deutsch</button><button data-ui="en" aria-pressed="false">English</button><button data-ui="ru" aria-pressed="false">Русский</button>
+    </div>
+  </div>
+  <h1 id="title"></h1>
+  <div class="stitch" aria-hidden="true"></div>
+</header>
+
+<div class="goo-nav"><div class="goo" id="nav" role="tablist">
+  <div class="goo-layer" aria-hidden="true"><i class="lead"></i><i class="trail"></i></div>
+  <button role="tab" data-v="rec" aria-selected="true" data-i18n="tabRec"></button>
+  <button role="tab" data-v="list" aria-selected="false"><span data-i18n="tabList"></span><span class="badge" id="count" hidden>0</span></button>
+  <button role="tab" data-v="help" aria-selected="false" data-i18n="tabHelp"></button>
+</div></div>
+
+<main>
+<section id="v-rec">
+  <div class="stepper" id="stepper" data-i18n-aria="chapters"></div>
+  <div class="chap-title"><h2 id="chapName"></h2><span id="chapCount"></span></div>
+  <div class="qpick" id="qpick" role="radiogroup" data-i18n-aria="question"></div>
+
+  <div class="stage" id="stage">
+    <div class="prompt"><small data-i18n="question"></small><p id="promptText"></p></div>
+    <div class="orb"><canvas id="spec"></canvas><div class="blob" id="blob"></div>
+      <button class="recbtn" id="recbtn"><span class="ic"></span></button></div>
+    <div class="timer" id="timer">00:00</div>
+    <div class="status" id="status"></div>
+    <div class="controls">
+      <button class="btn" id="pauseBtn" disabled></button>
+      <button class="btn" id="markBtn" disabled data-i18n="mark" data-i18n-title="markTitle"></button>
+      <button class="btn primary" id="stopBtn" disabled data-i18n="stopBtn"></button>
+    </div>
+    <div class="who" role="group" data-i18n-aria="whoQ">
+      <span class="hint" data-i18n="whoQ"></span>
+      <button data-who="mama" aria-pressed="true" data-i18n="mama"></button><button data-who="ich" aria-pressed="false" data-i18n="me"></button>
+    </div>
+    <div class="lang">
+      <label class="switch"><input type="checkbox" id="liveOn"> <span data-i18n="live"></span></label>
+      <div class="seg-lang" role="group" data-i18n-aria="speechLang">
+        <button data-lang="de-DE" aria-pressed="true">DE</button><button data-lang="en-US" aria-pressed="false">EN</button><button data-lang="ru-RU" aria-pressed="false">RU</button>
+      </div>
+    </div>
+    <div class="live" id="live" hidden></div>
+    <div class="srnote" id="srNote" hidden></div>
+  </div>
+</section>
+
+<section id="v-list" hidden>
+  <div class="card export">
+    <h3 data-i18n="pkgTitle"></h3>
+    <p style="margin:0;color:var(--muted);font-size:15.5px" data-i18n="pkgText"></p>
+    <label class="switch" style="font-size:15px"><input type="checkbox" id="onlyNew" checked> <span data-i18n="onlyNew"></span></label>
+    <div class="row"><button class="btn thread" id="exportBtn" data-i18n="exportBtn"></button><span class="meta" id="exportInfo"></span></div>
+    <div class="up" id="exportBar" hidden><i></i></div>
+  </div>
+  <div class="list" id="list"><div class="sk"></div><div class="sk"></div><div class="sk"></div></div>
+</section>
+
+<section id="v-help" class="help" hidden data-i18n-html="help"></section>
+</main>
+</div>
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+/* ---------- Questions in three languages (ids match the Lebensbuch) ---------- */
+const CH = [
+ {id:"herkunft", t:["Herkunft und Wurzeln","Origins and roots","Происхождение и корни"], q:[
+  ["Wo genau liegt Starojugino? Wie sah das Dorf aus, wer lebte dort?","Where exactly is Starojugino? What did the village look like, who lived there?","Где именно находится Староюгино? Как выглядела деревня, кто там жил?"],
+  ["Wie ist unsere Familie dorthin gekommen? Waren deine Eltern oder Großeltern schon dort geboren?","How did our family end up there? Were your parents or grandparents already born there?","Как наша семья туда попала? Твои родители или бабушка с дедушкой уже родились там?"],
+  ["Woher stammten die Vorfahren ursprünglich – von der Wolga, aus der Ukraine, vom Schwarzen Meer, aus Deutschland?","Where did our ancestors originally come from – the Volga, Ukraine, the Black Sea, Germany?","Откуда изначально были наши предки – с Волги, с Украины, с Чёрного моря, из Германии?"],
+  ["Wie hießen deine Eltern und Großeltern mit vollem Namen? Wann wurden sie geboren? Auch Mädchennamen?","What were your parents' and grandparents' full names? When were they born? Maiden names too?","Как полностью звали твоих родителей, бабушек и дедушек? Когда они родились? И девичьи фамилии тоже?"],
+  ["Gibt es Dokumente, Fotos oder eine Familienbibel aus dieser Zeit?","Are there documents, photos or a family Bible from that time?","Остались ли документы, фотографии или семейная Библия с того времени?"]]},
+ {id:"kindheit", t:["Kindheit","Childhood","Детство"], q:[
+  ["Wann und wo bist du geboren? Was weißt du über den Tag deiner Geburt?","When and where were you born? What do you know about the day you were born?","Когда и где ты родилась? Что ты знаешь о дне своего рождения?"],
+  ["Beschreib mir das Haus, in dem du aufgewachsen bist.","Describe the house you grew up in.","Опиши дом, в котором ты выросла."],
+  ["Wer gehörte alles zur Familie? Wie waren deine Eltern als Menschen?","Who was part of the family? What were your parents like as people?","Кто входил в семью? Какими людьми были твои родители?"],
+  ["Was ist deine früheste Erinnerung?","What is your earliest memory?","Какое твоё самое раннее воспоминание?"],
+  ["Womit habt ihr als Kinder gespielt? Wer waren deine Freunde?","What did you play with as children? Who were your friends?","Во что вы играли в детстве? Кто были твои друзья?"],
+  ["Was gab es zu essen – und was war etwas Besonderes?","What did you eat – and what was a special treat?","Что вы ели и что было особенным угощением?"],
+  ["Wie habt ihr Weihnachten, Ostern oder Geburtstage gefeiert?","How did you celebrate Christmas, Easter or birthdays?","Как вы праздновали Рождество, Пасху или дни рождения?"],
+  ["Wie war die Schule? In welcher Sprache wurde unterrichtet?","What was school like? Which language were you taught in?","Какой была школа? На каком языке вас учили?"]]},
+ {id:"sprache", t:["Sprache und Kultur","Language and culture","Язык и культура"], q:[
+  ["Wie haben deine Eltern und Großeltern Deutsch gesprochen – eher Dialekt oder Hochdeutsch?","How did your parents and grandparents speak German – more dialect or standard German?","Как говорили по-немецки твои родители, бабушки и дедушки – больше на диалекте или на литературном немецком?"],
+  ["Durftet ihr zu Hause oder öffentlich Deutsch sprechen?","Were you allowed to speak German at home or in public?","Можно ли было говорить по-немецки дома или на людях?"],
+  ["Welche deutschen Lieder, Gebete, Sprichwörter oder Gerichte gab es in der Familie?","Which German songs, prayers, sayings or dishes were there in the family?","Какие немецкие песни, молитвы, поговорки или блюда были в нашей семье?"],
+  ["Welche Religion hatte die Familie? Wie wurde der Glaube gelebt?","What religion was the family? How was the faith lived?","Какой веры была семья? Как жили этой верой?"],
+  ["Habt ihr euch eher als Deutsche, als Russen oder als beides gefühlt?","Did you feel more German, more Russian, or both?","Вы чувствовали себя больше немцами, русскими или и теми, и другими?"]]},
+ {id:"krieg", t:["Krieg, Deportation, Nachkriegszeit","War, deportation, post-war years","Война, депортация, послевоенные годы"], q:[
+  ["Was haben deine Eltern über den Krieg erzählt?","What did your parents tell you about the war?","Что рассказывали твои родители о войне?"],
+  ["Wurde die Familie umgesiedelt oder deportiert? Wann und wohin?","Was the family resettled or deported? When and where to?","Семью переселили или депортировали? Когда и куда?"],
+  ["Musste jemand in die Arbeitsarmee (Trudarmee)?","Did anyone have to serve in the labour army (Trudarmee)?","Кому-то из семьи пришлось быть в трудармии?"],
+  ["Gab es Zeiten, in denen ihr euch melden musstet oder das Dorf nicht verlassen durftet?","Were there times when you had to report to the authorities or weren't allowed to leave the village?","Были ли времена, когда нужно было отмечаться в комендатуре или нельзя было покидать деревню?"],
+  ["Wie hat die Familie Hunger und Kälte überstanden?","How did the family survive hunger and cold?","Как семья пережила голод и холод?"]]},
+ {id:"jugend", t:["Jugend","Youth","Юность"], q:[
+  ["Was wolltest du werden, als du jung warst?","What did you want to become when you were young?","Кем ты хотела стать в молодости?"],
+  ["Was hast du in deiner Freizeit gemacht? Gab es Tanzabende, Feste?","What did you do in your free time? Were there dances, celebrations?","Чем ты занималась в свободное время? Были ли танцы, праздники?"],
+  ["Welche Musik, Lieder oder Bücher haben dir gefallen?","Which music, songs or books did you like?","Какая музыка, песни или книги тебе нравились?"],
+  ["Gab es jemanden, der dich besonders geprägt hat?","Was there someone who shaped you in a special way?","Был ли человек, который на тебя особенно повлиял?"],
+  ["Wann hast du zum ersten Mal von zu Hause weggemusst?","When did you first have to leave home?","Когда тебе впервые пришлось уехать из дома?"]]},
+ {id:"familie", t:["Liebe, Arbeit, eigene Familie","Love, work, your own family","Любовь, работа, своя семья"], q:[
+  ["Wie hast du Papa kennengelernt? Was hat dir an ihm gefallen?","How did you meet Dad? What did you like about him?","Как ты познакомилась с папой? Что тебе в нём понравилось?"],
+  ["Wie war eure Hochzeit?","What was your wedding like?","Какой была ваша свадьба?"],
+  ["Welche Arbeit hast du gemacht? Was war daran schön, was schwer?","What work did you do? What was good about it, what was hard?","Кем ты работала? Что в этой работе было хорошего, а что тяжёлого?"],
+  ["Wie war es, als deine Kinder geboren wurden?","What was it like when your children were born?","Каково было, когда родились твои дети?"],
+  ["Was war die glücklichste Zeit in deinem Leben?","What was the happiest time of your life?","Какое время в твоей жизни было самым счастливым?"],
+  ["Was war die schwerste Zeit – und was hat dir geholfen, sie durchzustehen?","What was the hardest time – and what helped you get through it?","Какое время было самым тяжёлым и что помогло тебе его пережить?"]]},
+ {id:"ausreise", t:["Ausreise nach Deutschland","Moving to Germany","Переезд в Германию"], q:[
+  ["Wann und warum habt ihr beschlossen, nach Deutschland zu gehen?","When and why did you decide to move to Germany?","Когда и почему вы решили переехать в Германию?"],
+  ["Wie lief die Ausreise ab? Was durftet ihr mitnehmen?","How did the departure go? What were you allowed to take?","Как проходил отъезд? Что разрешили взять с собой?"],
+  ["Wie waren die ersten Tage, das Übergangslager, die erste Wohnung?","What were the first days, the transit camp, the first flat like?","Какими были первые дни, лагерь для переселенцев, первая квартира?"],
+  ["Was war in Deutschland ganz anders, als du erwartet hattest?","What was completely different in Germany from what you expected?","Что в Германии оказалось совсем не таким, как ты ожидала?"],
+  ["Was vermisst du aus der alten Heimat bis heute?","What do you still miss about the old homeland today?","По чему из старой родины ты скучаешь до сих пор?"]]},
+ {id:"rueckblick", t:["Rückblick und Botschaften","Looking back, passing on","Оглядываясь назад"], q:[
+  ["Worauf bist du in deinem Leben am meisten stolz?","What are you most proud of in your life?","Чем ты больше всего гордишься в своей жизни?"],
+  ["Was würdest du heute anders machen?","What would you do differently today?","Что бы ты сегодня сделала иначе?"],
+  ["Welche Werte waren dir immer wichtig?","Which values have always mattered to you?","Какие ценности всегда были для тебя важны?"],
+  ["Was soll die Familie über dich nie vergessen?","What should the family never forget about you?","Что семья никогда не должна забывать о тебе?"],
+  ["Was möchtest du deinen Enkeln oder Urenkeln mitgeben?","What would you like to pass on to your grandchildren or great-grandchildren?","Что ты хотела бы передать внукам или правнукам?"],
+  ["Gibt es ein Rezept, ein Lied oder einen Spruch, den du weitergeben möchtest?","Is there a recipe, a song or a saying you'd like to pass on?","Есть ли рецепт, песня или поговорка, которые ты хотела бы передать?"]]}
+];
+
+/* ---------- Interface text ---------- */
+const UI = ["de","en","ru"];
+const T = {
+ eyebrow:["Lebensbuch · Rekorder","Life book · Recorder","Книга жизни · Диктофон"],
+ title:["Erzähl mal, Mama.","Tell me, Mom.","Расскажи, мама."],
+ appLang:["Sprache der App","App language","Язык приложения"],
+ tabRec:["Aufnehmen","Record","Запись"], tabList:["Aufnahmen","Recordings","Записи"], tabHelp:["So geht's","How it works","Как это работает"],
+ chapters:["Kapitel","Chapters","Главы"], question:["Frage","Question","Вопрос"],
+ recordedOf:["{d} von {n} Fragen aufgenommen","{d} of {n} questions recorded","Записано вопросов: {d} из {n}"],
+ recordedAria:["{d} von {n} aufgenommen","{d} of {n} recorded","записано {d} из {n}"],
+ free:["Freies Gespräch zu diesem Kapitel","Free conversation about this chapter","Свободный разговор на эту тему"],
+ freePrefix:["Freies Gespräch: ","Free conversation: ","Свободный разговор: "],
+ recStart:["Aufnahme starten","Start recording","Начать запись"], recStop:["Aufnahme beenden und speichern","Stop and save recording","Остановить и сохранить запись"],
+ idle:["Tippe auf den roten Knopf, um aufzunehmen.","Tap the red button to record.","Нажми красную кнопку, чтобы начать запись."],
+ pause:["Pause","Pause","Пауза"], resume:["Weiter","Resume","Продолжить"],
+ mark:["Stelle merken","Mark this moment","Отметить момент"],
+ markTitle:["Setzt eine Markierung in die Mitschrift, z. B. für eine Nachfrage","Adds a marker to the transcript, e.g. for a follow-up question","Ставит отметку в расшифровке, например чтобы потом переспросить"],
+ stopBtn:["Fertig & speichern","Done & save","Готово, сохранить"],
+ whoQ:["Wer spricht?","Who is speaking?","Кто говорит?"], mama:["Mama","Mom","Мама"], me:["Ich","Me","Я"],
+ live:["Live-Mitschrift","Live transcript","Расшифровка"], speechLang:["Gesprochene Sprache","Spoken language","Язык речи"],
+ running:["Aufnahme läuft …","Recording …","Идёт запись …"], paused:["Pausiert","Paused","Пауза"], saving:["Wird gespeichert …","Saving …","Сохраняю …"],
+ saved:["Gespeichert. Nächste Frage wählen oder weiter erzählen lassen.","Saved. Pick the next question or keep talking.","Сохранено. Выбери следующий вопрос или продолжай рассказ."],
+ noRec:["Dieser Browser kann nicht aufnehmen. Öffne den Rekorder in Safari, Chrome oder Edge.","This browser can't record. Open the recorder in Safari, Chrome or Edge.","Этот браузер не умеет записывать. Открой диктофон в Safari, Chrome или Edge."],
+ noMic:["Kein Zugriff aufs Mikrofon. Erlaube es in den Einstellungen bzw. in der Adressleiste und versuch es noch einmal.","No microphone access. Allow it in Settings or in the address bar and try again.","Нет доступа к микрофону. Разреши его в настройках или в адресной строке и попробуй ещё раз."],
+ partSaved:["Teil {p} gespeichert","Part {p} saved","Часть {p} сохранена"], recSaved:["Aufnahme gespeichert","Recording saved","Запись сохранена"],
+ saveFail:["Speichern hat nicht geklappt. Die Aufnahme wird direkt gesichert.","Saving failed. The recording is being exported directly.","Не удалось сохранить. Запись будет выгружена напрямую."],
+ splitToast:["Teil {p} gespeichert, Aufnahme läuft weiter","Part {p} saved, still recording","Часть {p} сохранена, запись продолжается"],
+ markLine:["★ Stelle gemerkt – hier nachfragen","★ Marked – ask about this later","★ Отмечено – переспросить"],
+ markToast:["Stelle bei {t} gemerkt","Moment at {t} marked","Момент {t} отмечен"],
+ srStandalone:["Vom Home-Bildschirm aus erlaubt das iPhone keine Live-Mitschrift. Aufnehmen geht trotzdem. Für die Mitschrift öffne die App-Adresse in Safari.","When started from the Home Screen, the iPhone doesn't allow live transcripts. Recording still works. For a transcript, open the app address in Safari.","При запуске с экрана «Домой» iPhone не разрешает расшифровку. Запись всё равно работает. Для расшифровки открой адрес приложения в Safari."],
+ srIOS:["Für die Mitschrift müssen auf dem iPhone Siri bzw. die Diktierfunktion eingeschaltet sein (Einstellungen › Allgemein › Tastatur).","For transcripts, Siri or Dictation must be turned on (Settings › General › Keyboard).","Для расшифровки на iPhone должны быть включены Siri или диктовка (Настройки › Основные › Клавиатура)."],
+ srOther:["Live-Mitschrift geht in Safari, Chrome und Edge. Die Aufnahme läuft trotzdem.","Live transcripts work in Safari, Chrome and Edge. Recording still works.","Расшифровка работает в Safari, Chrome и Edge. Запись всё равно идёт."],
+ liveNow:["Mitschrift jetzt auf {l}","Transcript now in {l}","Расшифровка теперь: {l}"],
+ listening:["Höre zu …","Listening …","Слушаю …"],
+ pkgTitle:["Paket für das Lebensbuch","Package for the life book","Пакет для «Книги жизни»"],
+ pkgText:["Packt Aufnahmen und Mitschriften in eine ZIP-Datei. Im Lebensbuch unter „Aufnahmen“ hochladen, dann landet alles bei der richtigen Frage.","Packs recordings and transcripts into one ZIP file. Upload it in the life book under “Aufnahmen” and everything lands at the right question.","Упаковывает записи и расшифровки в один ZIP-файл. Загрузи его в «Книге жизни» во вкладке «Aufnahmen» – и всё попадёт к нужному вопросу."],
+ onlyNew:["Nur noch nicht exportierte","Only those not yet exported","Только ещё не выгруженные"],
+ exportBtn:["ZIP erstellen und sichern","Create and save ZIP","Создать и сохранить ZIP"],
+ noNew:["Keine neuen Aufnahmen zum Exportieren.","No new recordings to export.","Нет новых записей для выгрузки."],
+ noZip:["Für das ZIP braucht der Rekorder einmal Internet. Sichere die Aufnahmen sonst einzeln.","The recorder needs internet once to make the ZIP. Otherwise save the recordings one by one.","Для ZIP диктофону один раз нужен интернет. Иначе сохрани записи по одной."],
+ packing:["Packe … {p} %","Packing … {p} %","Упаковываю … {p} %"],
+ packed:["{n} Aufnahmen gepackt ({mb} MB).","{n} recordings packed ({mb} MB).","Упаковано записей: {n} ({mb} МБ)."],
+ packFail:["Das Packen hat nicht geklappt.","Packing failed.","Не удалось упаковать."],
+ empty:["Noch keine Aufnahmen. Wähle unter „Aufnehmen“ eine Frage und drücke den roten Knopf.","No recordings yet. Choose a question under “Record” and press the red button.","Записей пока нет. Выбери вопрос во вкладке «Запись» и нажми красную кнопку."],
+ part:["Teil","Part","Часть"], markedN:["{n} gemerkt","{n} marked","отмечено: {n}"], exported:["exportiert","exported","выгружено"],
+ trView:["Mitschrift ansehen und korrigieren","View and correct transcript","Посмотреть и исправить расшифровку"],
+ trWrite:["Mitschrift selbst schreiben","Write the transcript yourself","Написать расшифровку самому"],
+ trPh:["Noch keine Mitschrift. Du kannst hier selbst Stichworte notieren.","No transcript yet. You can jot down notes here.","Расшифровки пока нет. Здесь можно записать заметки."],
+ share:["Audio teilen / sichern","Share / save audio","Поделиться / сохранить"], download:["Audio herunterladen","Download audio","Скачать аудио"],
+ del:["Löschen","Delete","Удалить"], delQ:["Wirklich löschen?","Really delete?","Точно удалить?"], deleted:["Aufnahme gelöscht","Recording deleted","Запись удалена"],
+ trSaved:["Mitschrift gespeichert","Transcript saved","Расшифровка сохранена"],
+ storeFail:["Speicher auf diesem Gerät ist nicht verfügbar.","Storage on this device is not available.","Хранилище на этом устройстве недоступно."],
+ hiddenSaved:["Die App wurde verlassen, deshalb wurde die Aufnahme gespeichert. Tippe auf den Knopf, um weiterzumachen.","The app was left, so the recording was saved. Tap the button to continue.","Приложение было свёрнуто, поэтому запись сохранена. Нажми кнопку, чтобы продолжить."],
+ help:[
+`<h2>So geht's</h2><ol>
+<li>Kapitel und Frage wählen. Die Frage erscheint groß über dem Knopf, damit man sie ablesen kann.</li>
+<li>Roten Knopf drücken. Beim ersten Mal fragt das Gerät nach dem Mikrofon – erlauben.</li>
+<li>Auf „Mama“ oder „Ich“ tippen, wenn die Person wechselt. So weiß die Mitschrift, wer gesprochen hat.</li>
+<li>Wird Russisch oder Englisch gesprochen, auf RU oder EN tippen. Die Mitschrift wechselt sofort die Sprache.</li>
+<li>„Fertig &amp; speichern“. Die Aufnahme bleibt auf diesem Gerät gespeichert, auch wenn die App geschlossen wird.</li>
+<li>Unter „Aufnahmen“ ein ZIP-Paket erstellen und im Lebensbuch hochladen.</li></ol>
+<h3 style="margin-top:22px">Auf dem iPhone</h3><ol>
+<li>Die App-Adresse in Safari öffnen, auf Teilen tippen und „Zum Home-Bildschirm“ wählen. Dann startet der Rekorder wie eine App.</li>
+<li>Während der Aufnahme das Display anlassen und die App nicht wechseln. Sperrt das iPhone, wird die Aufnahme sofort gespeichert. Danach einfach weiter aufnehmen.</li>
+<li>Die Live-Mitschrift geht auf dem iPhone nur in Safari selbst, nicht vom Home-Bildschirm. Die Aufnahme klappt in beiden Fällen.</li>
+<li>„ZIP erstellen und sichern“ öffnet das Teilen-Menü: in „Dateien“ sichern oder per AirDrop an den Laptop schicken.</li></ol>
+<p class="note">Die Live-Mitschrift nutzt die Spracherkennung des Geräts bzw. Browsers (Apple, Google oder Microsoft). Die Tonaufnahme selbst bleibt auf dem Gerät. Bei sehr privaten Themen kann man die Mitschrift ausschalten und nur aufnehmen.</p>
+<p class="note">Lange Gespräche werden alle 40 Minuten automatisch in Teile getrennt. Regelmäßig exportieren: Die Aufnahmen liegen nur auf diesem Gerät.</p>`,
+`<h2>How it works</h2><ol>
+<li>Choose a chapter and a question. The question appears large above the button so it's easy to read out.</li>
+<li>Press the red button. The first time, the device asks for the microphone – allow it.</li>
+<li>Tap “Mom” or “Me” when the speaker changes, so the transcript knows who said what.</li>
+<li>If someone speaks Russian or German, tap RU or DE. The transcript switches language right away.</li>
+<li>“Done &amp; save”. The recording stays on this device, even if the app is closed.</li>
+<li>Under “Recordings”, create a ZIP package and upload it to the life book.</li></ol>
+<h3 style="margin-top:22px">On the iPhone</h3><ol>
+<li>Open the app address in Safari, tap Share and choose “Add to Home Screen”. The recorder then starts like an app.</li>
+<li>Keep the screen on and stay in the app while recording. If the iPhone locks, the recording is saved immediately. Then just carry on.</li>
+<li>Live transcripts only work in Safari itself on the iPhone, not from the Home Screen. Recording works either way.</li>
+<li>“Create and save ZIP” opens the share sheet: save to Files or AirDrop it to the laptop.</li></ol>
+<p class="note">Live transcripts use the device's or browser's speech recognition (Apple, Google or Microsoft). The audio itself stays on the device. For very private topics, turn the transcript off and only record.</p>
+<p class="note">Long conversations are split into parts every 40 minutes. Export regularly: the recordings only live on this device.</p>`,
+`<h2>Как это работает</h2><ol>
+<li>Выбери главу и вопрос. Вопрос появится крупно над кнопкой, чтобы его было удобно прочитать.</li>
+<li>Нажми красную кнопку. В первый раз устройство спросит разрешение на микрофон – разреши.</li>
+<li>Нажимай «Мама» или «Я», когда говорит другой человек. Так расшифровка будет знать, кто что сказал.</li>
+<li>Если говорят по-немецки или по-английски, нажми DE или EN. Расшифровка сразу переключит язык.</li>
+<li>«Готово, сохранить». Запись остаётся на этом устройстве, даже если закрыть приложение.</li>
+<li>Во вкладке «Записи» создай ZIP-пакет и загрузи его в «Книгу жизни».</li></ol>
+<h3 style="margin-top:22px">На iPhone</h3><ol>
+<li>Открой адрес приложения в Safari, нажми «Поделиться» и выбери «На экран „Домой“». Тогда диктофон будет запускаться как приложение.</li>
+<li>Во время записи не выключай экран и не переключайся на другие приложения. Если iPhone заблокируется, запись сразу сохранится. Потом просто продолжай.</li>
+<li>Расшифровка на iPhone работает только в самом Safari, а не с экрана «Домой». Запись работает в обоих случаях.</li>
+<li>«Создать и сохранить ZIP» открывает меню «Поделиться»: сохрани в «Файлы» или отправь по AirDrop на ноутбук.</li></ol>
+<p class="note">Расшифровка использует распознавание речи устройства или браузера (Apple, Google или Microsoft). Сама аудиозапись остаётся на устройстве. Для очень личных тем можно выключить расшифровку и только записывать.</p>
+<p class="note">Длинные разговоры автоматически делятся на части каждые 40 минут. Регулярно выгружай записи: они хранятся только на этом устройстве.</p>`]
+};
+const LANGS = {"de-DE":"DE","en-US":"EN","ru-RU":"RU"};
+const SPEECH_FOR_UI = {de:"de-DE", en:"en-US", ru:"ru-RU"};
+const LOCALE = {de:"de-DE", en:"en-GB", ru:"ru-RU"};
+const WHO_DE = {mama:"Mama", ich:"Ich"}; // the Lebensbuch is German, so exports keep German labels
+const SEG_MAX = 40*60;
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const fmt = s => { s = Math.max(0, Math.floor(s)); const h = Math.floor(s/3600), m = Math.floor(s%3600/60), x = s%60; return (h ? h + ":" : "") + String(m).padStart(2,"0") + ":" + String(x).padStart(2,"0"); };
+const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+let ui = (() => { try{ const v = localStorage.getItem("rekorder-ui"); if(UI.includes(v)) return v; }catch(e){}
+  const n = (navigator.language || "de").slice(0,2); return n === "ru" ? "ru" : n === "en" ? "en" : "de"; })();
+const L = () => UI.indexOf(ui);
+function t(key, vars){ let s = (T[key] || [key])[L()] ?? T[key][0]; if(vars) for(const k in vars) s = s.replace("{" + k + "}", vars[k]); return s; }
+function toast(msg){ const el = $("#toast"); el.textContent = msg; el.classList.add("on"); clearTimeout(toast.t); toast.t = setTimeout(() => el.classList.remove("on"), 3200); }
+function qText(qid, li = L()){ const [ch, i] = qid.split(":"); const c = CH.find(x => x.id === ch); return i === "frei" ? (T.freePrefix[li] + c.t[li]) : c.q[+i][li]; }
+function lbId(qid){ const [ch, i] = qid.split(":"); return i === "frei" ? "frei-" + ch : ch + "-" + i; }
+
+/* ---------- Apply language ---------- */
+let statusKey = "idle";
+function setStatus(key, raw){ statusKey = key; $("#status").textContent = raw || t(key); }
+function applyLang(){
+  document.documentElement.lang = ui;
+  document.querySelectorAll("[data-i18n]").forEach(el => el.textContent = t(el.dataset.i18n));
+  document.querySelectorAll("[data-i18n-html]").forEach(el => el.innerHTML = t(el.dataset.i18nHtml));
+  document.querySelectorAll("[data-i18n-aria]").forEach(el => el.setAttribute("aria-label", t(el.dataset.i18nAria)));
+  document.querySelectorAll("[data-i18n-title]").forEach(el => el.title = t(el.dataset.i18nTitle));
+  document.querySelectorAll(".ui-lang button").forEach(b => b.setAttribute("aria-pressed", b.dataset.ui === ui));
+  $("#recbtn").setAttribute("aria-label", t(recording ? "recStop" : "recStart"));
+  $("#pauseBtn").textContent = t(paused ? "resume" : "pause");
+  if(statusKey) setStatus(statusKey);
+  scramble(t("title"));
+  if(!$("#srNote").hidden) showSrNote();
+  renderPicker(); renderList(); renderLive(); moveGoo();
+}
+document.querySelector(".ui-lang").addEventListener("click", e => { const b = e.target.closest("button[data-ui]"); if(!b) return;
+  ui = b.dataset.ui; try{ localStorage.setItem("rekorder-ui", ui); }catch(err){}
+  if(!recording) setSpeechLang(SPEECH_FOR_UI[ui]);
+  applyLang(); });
+
+/* ---------- Scramble decode title ---------- */
+let scrambleIv;
+function scramble(final){
+  const el = $("#title"); el.setAttribute("aria-label", final); clearInterval(scrambleIv);
+  if(reduced){ el.textContent = final; return; }
+  const glyphs = "абвгдежзиклмнопрстуфхцчшщэюяABCDEFGHÄÖÜß#*+";
+  let f = 0;
+  scrambleIv = setInterval(() => { f++;
+    el.textContent = [...final].map((ch,i) => ch === " " || i < f/1.6 ? ch : glyphs[Math.floor(Math.random()*glyphs.length)]).join("");
+    if(f/1.6 > final.length){ clearInterval(scrambleIv); el.textContent = final; } }, 38);
+}
+
+/* ---------- Storage (IndexedDB on this device) ---------- */
+let idb;
+const dbReady = new Promise((res, rej) => { const r = indexedDB.open("lebensbuch-rekorder", 1);
+  r.onupgradeneeded = () => r.result.createObjectStore("recs", {keyPath:"id"});
+  r.onsuccess = () => { idb = r.result; res(); }; r.onerror = () => rej(r.error); });
+const tx = (mode, fn) => dbReady.then(() => new Promise((res, rej) => { const x = idb.transaction("recs", mode); const out = fn(x.objectStore("recs")); x.oncomplete = () => res(out && out.result); x.onerror = () => rej(x.error); }));
+const putRec = r => tx("readwrite", s => s.put(r));
+const delRec = id => tx("readwrite", s => s.delete(id));
+const allRecs = () => tx("readonly", s => s.getAll()).then(a => (a||[]).sort((x,y) => y.created - x.created));
+let RECS = [], loadedRecs = false;
+async function refresh(){ try{ RECS = await allRecs(); }catch(e){ RECS = []; toast(t("storeFail")); } loadedRecs = true;
+  renderPicker(); renderList(); const n = RECS.filter(r => !r.exported).length; const b = $("#count"); b.hidden = !n; b.textContent = n; }
+
+/* ---------- Gooey nav ---------- */
+const nav = $("#nav");
+function moveGoo(){ const b = nav.querySelector('[aria-selected="true"]'); if(!b) return;
+  nav.querySelectorAll(".goo-layer i").forEach(i => { i.style.left = (b.offsetLeft - 4) + "px"; i.style.width = b.offsetWidth + "px"; }); }
+nav.addEventListener("click", e => { const b = e.target.closest("button[data-v]"); if(!b) return;
+  nav.querySelectorAll("button[data-v]").forEach(x => x.setAttribute("aria-selected", x === b));
+  ["rec","list","help"].forEach(v => $("#v-"+v).hidden = v !== b.dataset.v); moveGoo(); if(b.dataset.v === "list") renderList(); });
+addEventListener("resize", moveGoo); if(document.fonts) document.fonts.ready.then(moveGoo);
+
+/* ---------- Picker ---------- */
+let chap = 0, qid = "herkunft:0";
+function recCount(id){ return RECS.filter(r => r.qid === id).length; }
+function renderPicker(){
+  const li = L();
+  $("#stepper").innerHTML = CH.map((c,i) => { const n = c.q.length, d = c.q.filter((_,j) => recCount(c.id+":"+j)).length;
+    return `<button class="seg" data-c="${i}" aria-current="${i===chap}" title="${esc(c.t[li])}" aria-label="${esc(c.t[li])}, ${esc(t("recordedAria",{d,n}))}"><i style="width:${d/n*100}%"></i><span>${i+1}</span></button>`; }).join("");
+  const c = CH[chap];
+  $("#chapName").textContent = c.t[li];
+  $("#chapCount").textContent = t("recordedOf", {d: c.q.filter((_,j) => recCount(c.id+":"+j)).length, n: c.q.length});
+  const items = c.q.map((q,j) => ({id:c.id+":"+j, t:q[li]})).concat([{id:c.id+":frei", t:t("free")}]);
+  $("#qpick").innerHTML = items.map(x => { const n = recCount(x.id);
+    return `<label class="${x.id===qid?"sel":""}"><input type="radio" name="q" value="${x.id}" ${x.id===qid?"checked":""} ${recording?"disabled":""}><span>${esc(x.t)}</span>${n?`<span class="rec">● ${n}</span>`:""}</label>`; }).join("");
+  $("#promptText").textContent = qText(qid);
+}
+$("#stepper").addEventListener("click", e => { const b = e.target.closest(".seg"); if(!b || recording) return; chap = +b.dataset.c; qid = CH[chap].id + ":0"; renderPicker(); });
+$("#qpick").addEventListener("change", e => { qid = e.target.value; renderPicker(); });
+
+/* ---------- Recording ---------- */
+let stream, mr, chunks = [], mime = "", ac, analyser, freq, recording = false, paused = false, who = "mama";
+let segStart = 0, pausedMs = 0, pauseAt = 0, part = 1, sessionId = "", markers = [], lines = [], interim = "", recog = null, lang = SPEECH_FOR_UI[ui], wake = null, stopping = false, hiddenStop = false;
+function pickMime(){ for(const m of ["audio/webm;codecs=opus","audio/webm","audio/mp4;codecs=mp4a.40.2","audio/mp4"]) if(window.MediaRecorder && MediaRecorder.isTypeSupported(m)) return m; return ""; }
+const elapsed = () => recording ? ((paused ? pauseAt : Date.now()) - segStart - pausedMs) / 1000 : 0;
+
+async function start(){
+  if(!navigator.mediaDevices || !window.MediaRecorder){ setStatus("noRec"); return; }
+  try{ stream = await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true, noiseSuppression:true, autoGainControl:true}}); }
+  catch(e){ setStatus("noMic"); return; }
+  ac = new (window.AudioContext || window.webkitAudioContext)(); const src = ac.createMediaStreamSource(stream);
+  try{ ac.resume(); }catch(e){}
+  analyser = ac.createAnalyser(); analyser.fftSize = 256; analyser.smoothingTimeConstant = .8; src.connect(analyser); freq = new Uint8Array(analyser.frequencyBinCount);
+  mime = pickMime(); sessionId = Date.now().toString(36); part = 1; recording = true;
+  try{ wake = await navigator.wakeLock?.request("screen"); }catch(e){}
+  beginSegment();
+  document.body.classList.add("recording"); $("#stage").classList.add("recording");
+  $("#recbtn").setAttribute("aria-label", t("recStop"));
+  ["#pauseBtn","#markBtn","#stopBtn"].forEach(s => $(s).disabled = false);
+  setStatus("running"); renderPicker();
+  if($("#liveOn").checked) startRecog();
+}
+function beginSegment(){
+  chunks = []; markers = []; lines = []; interim = ""; segStart = Date.now(); pausedMs = 0; paused = false; renderLive();
+  mr = new MediaRecorder(stream, mime ? {mimeType:mime, audioBitsPerSecond:48000} : {audioBitsPerSecond:48000});
+  mr.ondataavailable = e => { if(e.data && e.data.size) chunks.push(e.data); };
+  mr.start(1000);
+}
+function lineText(l){ return `[${fmt(l.t)}] [${LANGS[l.lang]}] ${l.mark ? T.markLine[0] : (l.who ? WHO_DE[l.who] + ": " : "") + l.text}`; }
+function endSegment(isFinal){ return new Promise(res => {
+  const dur = elapsed(), q = qid, myChunks = chunks, myMarkers = markers.slice(), myLines = lines.slice(), p = part, sid = sessionId, type = mr.mimeType || mime || "audio/webm";
+  mr.onstop = async () => {
+    const blob = new Blob(myChunks, {type});
+    const rec = {id: sid + "-" + p, qid: q, part: p, created: Date.now(), duration: dur, mime: type, blob, markers: myMarkers, transcript: myLines.map(lineText).join("\n"), exported: false};
+    try{ await putRec(rec); toast(isFinal && p === 1 ? t("recSaved") : t("partSaved", {p})); }
+    catch(e){ toast(t("saveFail")); fallbackDownload(rec); }
+    await refresh(); res();
+  };
+  mr.stop(); });
+}
+async function stop(){
+  if(!recording || stopping) return; stopping = true;
+  setStatus("saving"); stopRecog(); await endSegment(true);
+  stream.getTracks().forEach(x => x.stop()); try{ ac.close(); }catch(e){} try{ wake && wake.release(); }catch(e){}
+  recording = false; paused = false; stopping = false;
+  document.body.classList.remove("recording"); $("#stage").classList.remove("recording");
+  $("#recbtn").setAttribute("aria-label", t("recStart")); $("#pauseBtn").textContent = t("pause");
+  ["#pauseBtn","#markBtn","#stopBtn"].forEach(s => $(s).disabled = true);
+  $("#timer").textContent = "00:00"; setStatus("saved");
+  renderPicker();
+}
+function togglePause(){
+  if(!recording) return;
+  if(!paused){ mr.pause(); paused = true; pauseAt = Date.now(); stopRecog(); $("#pauseBtn").textContent = t("resume"); setStatus("paused"); }
+  else { mr.resume(); pausedMs += Date.now() - pauseAt; paused = false; $("#pauseBtn").textContent = t("pause"); setStatus("running"); if($("#liveOn").checked) startRecog(); }
+}
+function fallbackDownload(rec){ deliver(rec.blob, fileBase(rec) + "." + ext(rec.mime), rec.mime.split(";")[0]); }
+/* On phones: open the share sheet (Save to Files, AirDrop, Mail). Elsewhere: a normal download. */
+async function deliver(blob, name, type){
+  try{
+    const file = new File([blob], name, {type});
+    if(navigator.canShare && navigator.canShare({files:[file]}) && (isIOS || /Android/.test(navigator.userAgent))){ await navigator.share({files:[file], title:name}); return; }
+  }catch(e){ if(e && e.name === "AbortError") return; }
+  const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); a.remove();
+}
+$("#recbtn").addEventListener("click", () => recording ? stop() : start());
+$("#stopBtn").addEventListener("click", stop);
+$("#pauseBtn").addEventListener("click", togglePause);
+$("#markBtn").addEventListener("click", () => { const x = elapsed(); markers.push(x); lines.push({t:x, lang, text:"", who:"", mark:true}); renderLive(); toast(t("markToast", {t: fmt(x)})); });
+
+setInterval(async () => {
+  if(!recording) return; $("#timer").textContent = fmt(elapsed());
+  if(!paused && !stopping && elapsed() >= SEG_MAX){ stopping = "split"; await endSegment(false); part++; beginSegment(); stopping = false; toast(t("splitToast", {p: part-1})); }
+}, 250);
+
+/* ---------- Live transcript (DE / EN / RU) ---------- */
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+const standalone = matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+function showSrNote(){ const n = $("#srNote"); n.hidden = false; n.textContent = t(isIOS && standalone ? "srStandalone" : isIOS ? "srIOS" : "srOther"); }
+function startRecog(){
+  if(!SR){ $("#liveOn").checked = false; showSrNote(); return; }
+  stopRecog(); $("#live").hidden = false;
+  recog = new SR(); recog.lang = lang; recog.continuous = true; recog.interimResults = true;
+  recog.onresult = e => { interim = "";
+    for(let i = e.resultIndex; i < e.results.length; i++){ const r = e.results[i];
+      if(r.isFinal){ const text = r[0].transcript.trim(); if(text) lines.push({t: elapsed(), lang: recog.lang, text, who}); } else interim += r[0].transcript; }
+    renderLive(); };
+  recog.onerror = e => { if(e.error === "not-allowed" || e.error === "service-not-allowed"){ $("#liveOn").checked = false; showSrNote(); recog = null; } };
+  recog.onend = () => { if(recog && recording && !paused && $("#liveOn").checked){ try{ recog.start(); }catch(e){} } };
+  try{ recog.start(); }catch(e){}
+}
+function stopRecog(){ if(recog){ const r = recog; recog = null; try{ r.stop(); }catch(e){} } interim = ""; }
+function renderLive(){
+  const el = $("#live"); if(!$("#liveOn").checked && !lines.length){ el.hidden = true; return; }
+  el.hidden = false;
+  el.innerHTML = lines.map(l => `<div><span class="ts">${fmt(l.t)}</span><span class="lg">${LANGS[l.lang]}</span>${l.mark ? esc(t("markLine")) : (l.who ? `<span class="sp ${l.who}">${esc(t(l.who === "mama" ? "mama" : "me"))}:</span>` : "") + esc(l.text)}</div>`).join("")
+    + (interim ? `<div class="interim">${esc(interim)}</div>` : (lines.length ? "" : `<div class="interim">${esc(t("listening"))}</div>`));
+  el.scrollTop = el.scrollHeight;
+}
+$("#liveOn").addEventListener("change", e => { if(e.target.checked){ if(SR) $("#srNote").hidden = true; if(recording && !paused) startRecog(); else if(!SR){ e.target.checked = false; showSrNote(); } else renderLive(); } else { stopRecog(); renderLive(); } });
+document.querySelector(".who").addEventListener("click", e => { const b = e.target.closest("button[data-who]"); if(!b) return;
+  if(interim.trim() && recording){ lines.push({t: elapsed(), lang, text: interim.trim(), who}); interim = ""; if(recog) startRecog(); }
+  who = b.dataset.who; document.querySelectorAll(".who button").forEach(x => x.setAttribute("aria-pressed", x === b)); renderLive(); });
+function setSpeechLang(v){ lang = v; document.querySelectorAll(".seg-lang button").forEach(x => x.setAttribute("aria-pressed", x.dataset.lang === v)); }
+document.querySelector(".seg-lang").addEventListener("click", e => { const b = e.target.closest("button[data-lang]"); if(!b) return;
+  setSpeechLang(b.dataset.lang); if(recog){ startRecog(); toast(t("liveNow", {l: LANGS[lang]})); } });
+
+/* ---------- Visual: radial spectrum + breathing blob + magnetic button ---------- */
+const cv = $("#spec"), cx = cv.getContext("2d");
+function sizeCv(){ const r = cv.getBoundingClientRect(), d = Math.min(devicePixelRatio||1, 2); cv.width = r.width*d; cv.height = r.height*d; cx.setTransform(d,0,0,d,0,0); }
+addEventListener("resize", sizeCv); sizeCv();
+(function draw(time){
+  const W = cv.clientWidth, H = cv.clientHeight, R = W*.3; cx.clearRect(0,0,W,H);
+  const css = getComputedStyle(document.documentElement), col = css.getPropertyValue("--thread").trim(), mut = css.getPropertyValue("--line").trim();
+  let level = 0; const N = 64, live = recording && !paused && analyser;
+  if(live) analyser.getByteFrequencyData(freq);
+  for(let i = 0; i < N; i++){
+    const v = live ? freq[Math.floor(i/N*freq.length*.7)]/255 : (reduced ? .06 : .05 + .04*Math.sin(time/700 + i*.5));
+    level += v; const a = i/N*Math.PI*2 - Math.PI/2, len = 6 + v*W*.17;
+    cx.strokeStyle = live ? col : mut; cx.lineWidth = 3; cx.lineCap = "round";
+    cx.beginPath(); cx.moveTo(W/2 + Math.cos(a)*R, H/2 + Math.sin(a)*R); cx.lineTo(W/2 + Math.cos(a)*(R+len), H/2 + Math.sin(a)*(R+len)); cx.stroke();
+  }
+  level /= N; $("#blob").style.transform = `scale(${1 + (live ? level*1.4 : 0)})`;
+  requestAnimationFrame(draw);
+})(0);
+(function magnetic(){
+  const b = $("#recbtn"), orb = b.parentElement; if(reduced) return;
+  orb.addEventListener("pointermove", e => { if(e.pointerType !== "mouse") return; const r = b.getBoundingClientRect(); const dx = e.clientX - (r.left + r.width/2), dy = e.clientY - (r.top + r.height/2);
+    b.style.transform = `translate(${dx*.25}px,${dy*.25}px)`; });
+  orb.addEventListener("pointerleave", () => b.style.transform = "");
+})();
+
+/* ---------- Recordings list ---------- */
+const urls = {};
+const ext = m => /mp4/.test(m) ? "m4a" : "webm";
+function fileBase(r){ const d = new Date(r.created); const ds = d.getFullYear() + String(d.getMonth()+1).padStart(2,"0") + String(d.getDate()).padStart(2,"0") + "-" + String(d.getHours()).padStart(2,"0") + String(d.getMinutes()).padStart(2,"0");
+  return "lebensbuch__" + lbId(r.qid) + "__" + ds + (r.part > 1 ? "__teil" + r.part : ""); }
+const confirmDel = {};
+function renderList(){
+  const el = $("#list"); if(!loadedRecs) return;
+  if(!RECS.length){ el.innerHTML = `<div class="empty">${esc(t("empty"))}</div>`; return; }
+  el.innerHTML = RECS.map(r => { if(!urls[r.id]) urls[r.id] = URL.createObjectURL(r.blob);
+    const mb = (r.blob.size/1048576).toFixed(1);
+    return `<div class="card" data-id="${r.id}">
+      <h3>${esc(qText(r.qid))}${r.part > 1 ? " · " + t("part") + " " + r.part : ""}</h3>
+      <div class="meta"><span>${new Date(r.created).toLocaleString(LOCALE[ui],{dateStyle:"medium",timeStyle:"short"})}</span><span>${fmt(r.duration)}</span><span>${mb} MB</span>${r.markers.length ? `<span>★ ${esc(t("markedN",{n:r.markers.length}))}</span>` : ""}${r.exported ? `<span class="exp">${esc(t("exported"))}</span>` : ""}</div>
+      <audio controls preload="metadata" src="${urls[r.id]}"></audio>
+      <details><summary class="meta" style="cursor:pointer">${esc(t(r.transcript ? "trView" : "trWrite"))}</summary>
+        <textarea data-tr="${r.id}" placeholder="${esc(t("trPh"))}">${esc(r.transcript)}</textarea></details>
+      <div class="row"><button class="btn small" data-dl="${r.id}">${esc(t(isIOS ? "share" : "download"))}</button>
+        <button class="btn small" data-del="${r.id}">${esc(t(confirmDel[r.id] ? "delQ" : "del"))}</button></div></div>`; }).join("");
+}
+$("#list").addEventListener("click", async e => {
+  const dl = e.target.closest("[data-dl]"), de = e.target.closest("[data-del]");
+  if(dl){ const r = RECS.find(x => x.id === dl.dataset.dl); deliver(r.blob, fileBase(r) + "." + ext(r.mime), r.mime.split(";")[0]); }
+  if(de){ const id = de.dataset.del; if(!confirmDel[id]){ confirmDel[id] = true; renderList(); setTimeout(() => { delete confirmDel[id]; renderList(); }, 4000); return; }
+    delete confirmDel[id]; await delRec(id); URL.revokeObjectURL(urls[id]); delete urls[id]; refresh(); toast(t("deleted")); }
+});
+$("#list").addEventListener("change", async e => { const x = e.target.closest("[data-tr]"); if(!x) return;
+  const r = RECS.find(y => y.id === x.dataset.tr); r.transcript = x.value; await putRec(r); toast(t("trSaved")); });
+
+/* ---------- Export ZIP ---------- */
+$("#exportBtn").addEventListener("click", async () => {
+  const pick = RECS.filter(r => !$("#onlyNew").checked || !r.exported);
+  if(!pick.length){ toast(t("noNew")); return; }
+  if(!window.JSZip){ $("#exportInfo").textContent = t("noZip"); return; }
+  const btn = $("#exportBtn"), bar = $("#exportBar"); btn.disabled = true; bar.hidden = false; bar.firstElementChild.style.width = "0%";
+  const zip = new JSZip(), items = [];
+  pick.forEach(r => { const base = fileBase(r), audio = base + "." + ext(r.mime);
+    zip.file(audio, r.blob); if(r.transcript) zip.file(base + ".txt", r.transcript);
+    items.push({recId:r.id, file:audio, transcriptFile: r.transcript ? base + ".txt" : null, questionId: lbId(r.qid), question: qText(r.qid, 0), part:r.part, created:new Date(r.created).toISOString(), duration:Math.round(r.duration), markers:r.markers.map(Math.round)}); });
+  zip.file("manifest.json", JSON.stringify({app:"lebensbuch-rekorder", version:1, items}, null, 2));
+  try{
+    const blob = await zip.generateAsync({type:"blob"}, m => { bar.firstElementChild.style.width = m.percent.toFixed(0) + "%"; $("#exportInfo").textContent = t("packing", {p: m.percent.toFixed(0)}); });
+    await deliver(blob, "lebensbuch-paket-" + new Date().toISOString().slice(0,10) + ".zip", "application/zip");
+    for(const r of pick){ r.exported = true; await putRec(r); }
+    $("#exportInfo").textContent = t("packed", {n: pick.length, mb: (blob.size/1048576).toFixed(1)}); refresh();
+  }catch(e){ $("#exportInfo").textContent = t("packFail"); }
+  btn.disabled = false; setTimeout(() => bar.hidden = true, 1500);
+});
+
+/* ---------- Phone lifecycle ---------- */
+document.addEventListener("visibilitychange", () => {
+  if(document.hidden && recording && !stopping){ hiddenStop = true; stop(); }
+  if(!document.hidden && hiddenStop){ hiddenStop = false; setStatus("hiddenSaved"); }
+});
+addEventListener("beforeunload", e => { if(recording){ e.preventDefault(); e.returnValue = ""; } });
+
+setSpeechLang(lang); applyLang(); refresh();
+if("serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("sw.js").catch(() => {});
+try{ navigator.storage && navigator.storage.persist && navigator.storage.persist(); }catch(e){}
+</script>
+</body>
+</html>
