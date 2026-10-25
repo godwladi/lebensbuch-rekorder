@@ -3,7 +3,7 @@
 // Service Worker: Cache-First fuer den Offline-Betrieb als iPhone-App.
 // "Online stellen.bat" setzt CACHE automatisch hoch, damit das iPhone Updates erkennt.
 // ---------------------------------------------------------------------------
-const CACHE = 'lebensbuch-rekorder-20261022-1215';
+const CACHE = 'lebensbuch-rekorder-20261025-1228';
 const FILES = ['./', 'index.html', 'manifest.webmanifest', 'icons/icon-180.png', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png'];
 const CDN = ['https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js'];
 

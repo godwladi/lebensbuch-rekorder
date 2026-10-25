@@ -446,6 +446,15 @@ addEventListener("resize", moveGoo); if(document.fonts) document.fonts.ready.the
 
 /* ---------- Picker ---------- */
 let chap = 0, qid = "herkunft:0";
+/* Aus dem Lebensbuch geöffnet: rekorder.html?q=kindheit-3 oder ?q=frei-kindheit */
+(function preselect(){
+  const m = /^(?:frei-([a-z]+)|([a-z]+)-(\d+))$/.exec(new URLSearchParams(location.search).get("q") || "");
+  if(!m) return;
+  const ch = m[1] || m[2], i = m[1] ? "frei" : m[3];
+  const idx = CH.findIndex(c => c.id === ch);
+  if(idx < 0 || (i !== "frei" && +i >= CH[idx].q.length)) return;
+  chap = idx; qid = ch + ":" + i;
+})();
 function recCount(id){ return RECS.filter(r => r.qid === id).length; }
 function renderPicker(){
   const li = L();
